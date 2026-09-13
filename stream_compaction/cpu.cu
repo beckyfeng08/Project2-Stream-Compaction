@@ -18,14 +18,14 @@ namespace StreamCompaction {
          * (Optional) For better understanding before starting moving to GPU, you can simulate your GPU scan in this function first.
          */
         void scan(int n, int *odata, const int *idata) {
-            timer().startCpuTimer();
+            //timer().startCpuTimer();
             // TODO
             int count = 0;
             for (int i = 0; i < n; i++) {
                 odata[i] = count;
                 count += idata[i];
             }
-            timer().endCpuTimer();
+            //timer().endCpuTimer();
         }
 
         /**
@@ -44,7 +44,7 @@ namespace StreamCompaction {
                 }
             }
             timer().endCpuTimer();
-            return -1;
+            return j;
         }
 
         /**
@@ -69,13 +69,17 @@ namespace StreamCompaction {
             //scatter
             int curridx = 0;
             for (int i = 0; i < n; i++) {
-                if (curridx < scanresult[i]) {
-                    odata[curridx] = idata[i]; // last scan result is the element to populate
-                    curridx = scanresult[i]; // increment
+                if (prescan[i] == 1) {
+                    int idx = scanresult[i];
+                    odata[idx] = idata[i];
+                    curridx++;
                 }
             }
+       
+            delete[] prescan;
+            delete[] scanresult;
             timer().endCpuTimer();
-            return -1;
+            return curridx;
         }
     }
 }
