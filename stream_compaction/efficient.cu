@@ -86,11 +86,51 @@ namespace StreamCompaction {
          * @param idata  The array of elements to compact.
          * @returns      The number of elements remaining after compaction.
          */
+
+         __global__ void genBoolArray(int n, int* odata, const int* idata) {
+            int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+            if (index < n) {
+                if (idata[index] == 0) return;
+                odata[index] = 1;
+            }
+         }
+
+          __global__ void scatter(int n, int* booldata_scanned, int* idata, int* odata) {
+            int count = 0;
+            int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+            if (index < n - 1) {
+               // we write if the right is a new number
+               if (booldata_scanned[index + 1] != booldata_scanned[index]) {
+                odata[index] = idata[index];
+                count++;
+               }
+            }
+         }
+
         int compact(int n, int *odata, const int *idata) {
             timer().startGpuTimer();
+            int blockSize = 64;
+            int fullBlocksPerGrid((n + blockSize - 1) / blockSize);
+
             // TODO
+            int* booldata;
+            int* booldata_scanned;
+            cudaMalloc((void**) &booldata, n * sizeof(int));
+            cudaMalloc((void**) &booldata_scanned, n * sizeof(int));
+
+            genBoolArray<<<fullBlocksPerGrid, blockSize>>>(n, booldata, idata);
+            scan(n, booldata_scanned, booldata);
+
+            scatter<<<fullBlocksPerGrid, blockSize>>>(n, booldata_scanned, idata, odata);
+            int count = booldata_scanned[n - 1];
+
+            cudaFree(booldata);
+            cudaFree(booldata_scanned);
+        
+
             timer().endGpuTimer();
-            return -1;
+
+            return count;
         }
     }
 }
