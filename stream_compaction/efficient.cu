@@ -58,8 +58,9 @@ namespace StreamCompaction {
             // copy values and pad with 0s
             cudaMemset(idata2, 0, n_padded * sizeof(int));
             cudaMemcpy(idata2, idata, n * sizeof(int), cudaMemcpyHostToDevice);
+                        timer().startGpuTimer();
+
             int logn = ilog2ceil(n);
-            timer().startGpuTimer();
 
             // upsweep
             for (int d = 0; d < logn; d++) {

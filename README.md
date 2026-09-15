@@ -46,6 +46,60 @@ We see that for large array sizes (greater than 2^21 elements, our work-efficien
 What is causing performance bottlenecks in each computation system?
 
 
-Release version test output
+Release version test output, for a 2^18 sized array^:
+```
 
+****************
+** SCAN TESTS **
+****************
+    [  14  42  25  38  34   7  14  48  43   0  13   7  39 ...  29   0 ]
+==== cpu scan, power-of-two ====
+   elapsed time: 0.1914ms    (std::chrono Measured)
+    [   0  14  56  81 119 153 160 174 222 265 265 278 285 ... 6416043 6416072 ]
+==== cpu scan, non-power-of-two ====
+   elapsed time: 0.155ms    (std::chrono Measured)
+    [   0  14  56  81 119 153 160 174 222 265 265 278 285 ... 6415948 6415978 ]
+    passed
+==== naive scan, power-of-two ====
+   elapsed time: 0.50288ms    (CUDA Measured)
+    passed
+==== naive scan, non-power-of-two ====
+   elapsed time: 0.353984ms    (CUDA Measured)
+    passed
+==== work-efficient scan, power-of-two ====
+   elapsed time: 0.800544ms    (CUDA Measured)
+    passed
+==== work-efficient scan, non-power-of-two ====
+   elapsed time: 0.568288ms    (CUDA Measured)
+    passed
+==== thrust scan, power-of-two ====
+   elapsed time: 3.37571ms    (CUDA Measured)
+    passed
+==== thrust scan, non-power-of-two ====
+   elapsed time: 0.762944ms    (CUDA Measured)
+    passed
+
+*****************************
+** STREAM COMPACTION TESTS **
+*****************************
+    [   2   0   0   2   0   3   1   3   2   2   1   2   2 ...   3   0 ]
+==== cpu compact without scan, power-of-two ====
+   elapsed time: 0.9799ms    (std::chrono Measured)
+    [   2   2   3   1   3   2   2   1   2   2   2   1   1 ...   3   3 ]
+    passed
+==== cpu compact without scan, non-power-of-two ====
+   elapsed time: 1.1217ms    (std::chrono Measured)
+    [   2   2   3   1   3   2   2   1   2   2   2   1   1 ...   2   1 ]
+    passed
+==== cpu compact with scan ====
+   elapsed time: 0.3701ms    (std::chrono Measured)
+    [   2   2   3   1   3   2   2   1   2   2   2   1   1 ...   3   3 ]
+    passed
+==== work-efficient compact, power-of-two ====
+   elapsed time: 0.912448ms    (CUDA Measured)
+    passed
+==== work-efficient compact, non-power-of-two ====
+   elapsed time: 0.945728ms    (CUDA Measured)
+    passed
+```
 
