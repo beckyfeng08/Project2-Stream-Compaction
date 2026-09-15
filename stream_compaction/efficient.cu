@@ -12,35 +12,30 @@ namespace StreamCompaction {
             return timer;
         }
 
-
-        __global__ void padzeros(int startidx, int endidx, int* a) {
-            int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-            if (index >= endidx - startidx) {
-                return;
-            }
-                a[startidx + index] = 0;
-
-        }
         __global__ void upsweep(int n, int offset, int* idata) {
             int index = (blockIdx.x * blockDim.x) + threadIdx.x;
             int two_dplusone = 1 << (offset + 1);
-            int two_d = 1 << offset;
             int k = index * two_dplusone;
-            if (k + two_dplusone - 1 < n) {
-                idata[k + two_dplusone - 1] += idata[k + two_d - 1]; 
+             if (k + two_dplusone - 1 >= n) {
+                return;
             }
+            int two_d = 1 << offset;
+            idata[k + two_dplusone - 1] += idata[k + two_d - 1]; 
+            
         }
 
         __global__ void downsweep(int n, int offset, int* idata) {
             int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-            int two_d = 1 << offset;
             int two_dplusone = 1 << (offset + 1);
             int k = index * two_dplusone;
-            if (k + two_dplusone - 1 < n) {
-                int t = idata[k + two_d - 1];
-                idata[k + two_d - 1] = idata[k + two_dplusone - 1];
-                idata[k + two_dplusone - 1] += t;
+            if  (k + two_dplusone - 1 >= n) {
+                return;
             }
+            int two_d = 1 << offset;
+
+            int t = idata[k + two_d - 1];
+            idata[k + two_d - 1] = idata[k + two_dplusone - 1];
+            idata[k + two_dplusone - 1] += t;
         }
 
         /**
@@ -61,16 +56,22 @@ namespace StreamCompaction {
             }
 
             cudaMalloc((void**)&idata2, n_padded * sizeof(int));
+            // copy values and pad with 0s
+            cudaMemset(idata2, 0, n_padded * sizeof(int));
             cudaMemcpy(idata2, idata, n * sizeof(int), cudaMemcpyHostToDevice);
             padzeros<<<fullBlocksPerGrid, blockSize>>>(n, n_padded, idata2);
 
             // upsweep
             for (int d = 0; d < ilog2ceil(n) ; d++) {
+                int numelements = 1 << (ilog2ceil(n) - d);
+                fullBlocksPerGrid =( numelements + blockSize - 1) / blockSize;
                 upsweep<<<fullBlocksPerGrid, blockSize>>>(n_padded, d, idata2);
             }
             // downsweep, geenrates exclusive scan
             cudaMemset(idata2 + n_padded - 1, 0, sizeof(int));
             for (int d = ilog2ceil(n) - 1; d >= 0; d--) {
+                int numelements = 1 << (ilog2ceil(n) - d);
+                fullBlocksPerGrid =( numelements + blockSize - 1) / blockSize;
                 downsweep<<<fullBlocksPerGrid, blockSize>>>(n_padded, d, idata2);
             }
 
