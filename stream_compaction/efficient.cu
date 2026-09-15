@@ -15,29 +15,31 @@ namespace StreamCompaction {
 
         __global__ void padzeros(int startidx, int endidx, int* a) {
             int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-            if (index < endidx - startidx) {
-                a[startidx + index] = 0;
+            if (index >= endidx - startidx) {
+                return;
             }
+                a[startidx + index] = 0;
+
         }
         __global__ void upsweep(int n, int offset, int* idata) {
             int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-            if (index < n) {
-                int two_dplusone = 1 << (offset + 1);
-                int two_d = 1 << offset;
-
-                idata[index + two_dplusone - 1] += idata[index + two_d - 1];
+            int two_dplusone = 1 << (offset + 1);
+            int two_d = 1 << offset;
+            int k = index * two_dplusone;
+            if (k + two_dplusone - 1 < n) {
+                idata[k + two_dplusone - 1] += idata[k + two_d - 1]; 
             }
         }
 
         __global__ void downsweep(int n, int offset, int* idata) {
             int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-            if (index < n) {
-                int two_d = 1 << offset;
-                int two_dplusone = 1 << (offset + 1);
-
-                int t = idata[index + two_d - 1];
-                idata[index + two_d - 1] = idata[index + two_dplusone - 1];
-                idata[index + two_dplusone - 1] += t;
+            int two_d = 1 << offset;
+            int two_dplusone = 1 << (offset + 1);
+            int k = index * two_dplusone;
+            if (k + two_dplusone - 1 < n) {
+                int t = idata[k + two_d - 1];
+                idata[k + two_d - 1] = idata[k + two_dplusone - 1];
+                idata[k + two_dplusone - 1] += t;
             }
         }
 
@@ -45,7 +47,7 @@ namespace StreamCompaction {
          * Performs prefix-sum (aka scan) on idata, storing the result into odata.
          */
         void scan(int n, int *odata, const int *idata) {
-            timer().startGpuTimer();
+            //timer().startGpuTimer();
             // setting block size
             int blockSize = 64;
             int fullBlocksPerGrid((n + blockSize - 1) / blockSize);
@@ -63,18 +65,18 @@ namespace StreamCompaction {
             padzeros<<<fullBlocksPerGrid, blockSize>>>(n, n_padded, idata2);
 
             // upsweep
-            for (int d = 0; d < ilog2ceil(n) - 1 ; d++) {
+            for (int d = 0; d < ilog2ceil(n) ; d++) {
                 upsweep<<<fullBlocksPerGrid, blockSize>>>(n_padded, d, idata2);
             }
             // downsweep, geenrates exclusive scan
             cudaMemset(idata2 + n_padded - 1, 0, sizeof(int));
-            for (int d = ilog2ceil(n) - 1; d > 0; d--) {
+            for (int d = ilog2ceil(n) - 1; d >= 0; d--) {
                 downsweep<<<fullBlocksPerGrid, blockSize>>>(n_padded, d, idata2);
             }
 
             cudaMemcpy(odata, idata2, n * sizeof(int), cudaMemcpyDeviceToHost);
             cudaFree(idata2);
-            timer().endGpuTimer();
+            //timer().endGpuTimer();
         }
 
         /**
@@ -87,25 +89,7 @@ namespace StreamCompaction {
          * @returns      The number of elements remaining after compaction.
          */
 
-         __global__ void genBoolArray(int n, int* odata, const int* idata) {
-            int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-            if (index < n) {
-                if (idata[index] == 0) return;
-                odata[index] = 1;
-            }
-         }
 
-          __global__ void scatter(int n, int* booldata_scanned, int* idata, int* odata) {
-            int count = 0;
-            int index = (blockIdx.x * blockDim.x) + threadIdx.x;
-            if (index < n - 1) {
-               // we write if the right is a new number
-               if (booldata_scanned[index + 1] != booldata_scanned[index]) {
-                odata[index] = idata[index];
-                count++;
-               }
-            }
-         }
 
         int compact(int n, int *odata, const int *idata) {
             timer().startGpuTimer();
@@ -115,22 +99,42 @@ namespace StreamCompaction {
             // TODO
             int* booldata;
             int* booldata_scanned;
-            cudaMalloc((void**) &booldata, n * sizeof(int));
-            cudaMalloc((void**) &booldata_scanned, n * sizeof(int));
 
-            genBoolArray<<<fullBlocksPerGrid, blockSize>>>(n, booldata, idata);
+            int* idata2;
+            int* odata2;
+
+            cudaMalloc(&booldata, n * sizeof(int));
+            cudaMemset(booldata, 0, n * sizeof(int));
+
+            cudaMalloc((void**) &booldata_scanned, n * sizeof(int));
+            cudaMemset(booldata_scanned, 0, n * sizeof(int));
+
+            cudaMalloc(&idata2, n * sizeof(int));
+            cudaMalloc(&odata2, n * sizeof(int));
+            cudaMemcpy(idata2, idata, n * sizeof(int), cudaMemcpyHostToDevice); // must be put on device i think for this to work
+
+            StreamCompaction::Common::kernMapToBoolean << <fullBlocksPerGrid, blockSize >> > (n, booldata, idata2);
+
             scan(n, booldata_scanned, booldata);
 
-            scatter<<<fullBlocksPerGrid, blockSize>>>(n, booldata_scanned, idata, odata);
-            int count = booldata_scanned[n - 1];
+            StreamCompaction::Common::kernScatter <<<fullBlocksPerGrid, blockSize>>>(n, odata2, idata2, booldata, booldata_scanned);
+
+            int count1;
+            int count2;
+
+            cudaMemcpy( &count1, booldata_scanned + (n - 1), sizeof(int), cudaMemcpyDeviceToHost);
+            cudaMemcpy(&count2, booldata + (n - 1), sizeof(int), cudaMemcpyDeviceToHost);
+
+            cudaMemcpy(odata, odata2, n * sizeof(int), cudaMemcpyDeviceToHost);
 
             cudaFree(booldata);
             cudaFree(booldata_scanned);
-        
+            cudaFree(odata2);
+            cudaFree(idata2);
 
             timer().endGpuTimer();
 
-            return count;
+            return count1 + count2;
         }
     }
 }
