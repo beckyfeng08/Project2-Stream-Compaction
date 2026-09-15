@@ -42,7 +42,6 @@ namespace StreamCompaction {
          * Performs prefix-sum (aka scan) on idata, storing the result into odata.
          */
         void scan(int n, int *odata, const int *idata) {
-            //timer().startGpuTimer();
             // setting block size
             int blockSize = 64;
             int fullBlocksPerGrid((n + blockSize - 1) / blockSize);
@@ -59,25 +58,26 @@ namespace StreamCompaction {
             // copy values and pad with 0s
             cudaMemset(idata2, 0, n_padded * sizeof(int));
             cudaMemcpy(idata2, idata, n * sizeof(int), cudaMemcpyHostToDevice);
-            padzeros<<<fullBlocksPerGrid, blockSize>>>(n, n_padded, idata2);
+            int logn = ilog2ceil(n);
+            timer().startGpuTimer();
 
             // upsweep
-            for (int d = 0; d < ilog2ceil(n) ; d++) {
-                int numelements = 1 << (ilog2ceil(n) - d);
+            for (int d = 0; d < logn; d++) {
+                int numelements = 1 << (logn - d);
                 fullBlocksPerGrid =( numelements + blockSize - 1) / blockSize;
                 upsweep<<<fullBlocksPerGrid, blockSize>>>(n_padded, d, idata2);
             }
             // downsweep, geenrates exclusive scan
             cudaMemset(idata2 + n_padded - 1, 0, sizeof(int));
-            for (int d = ilog2ceil(n) - 1; d >= 0; d--) {
-                int numelements = 1 << (ilog2ceil(n) - d);
+            for (int d = logn - 1; d >= 0; d--) {
+                int numelements = 1 << (logn - d);
                 fullBlocksPerGrid =( numelements + blockSize - 1) / blockSize;
                 downsweep<<<fullBlocksPerGrid, blockSize>>>(n_padded, d, idata2);
             }
+            timer().endGpuTimer();
 
             cudaMemcpy(odata, idata2, n * sizeof(int), cudaMemcpyDeviceToHost);
             cudaFree(idata2);
-            //timer().endGpuTimer();
         }
 
         /**
@@ -93,7 +93,7 @@ namespace StreamCompaction {
 
 
         int compact(int n, int *odata, const int *idata) {
-            timer().startGpuTimer();
+            //timer().startGpuTimer();
             int blockSize = 64;
             int fullBlocksPerGrid((n + blockSize - 1) / blockSize);
 
@@ -133,7 +133,7 @@ namespace StreamCompaction {
             cudaFree(odata2);
             cudaFree(idata2);
 
-            timer().endGpuTimer();
+            //timer().endGpuTimer();
 
             return count1 + count2;
         }
