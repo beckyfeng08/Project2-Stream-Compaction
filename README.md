@@ -41,12 +41,19 @@ All of the following data were taken on Release mode, for array sizes of power-o
 
 ![scan performance graph](img/Unknown.png)
 
-We see that for large array sizes (greater than 2^21 elements, our work-efficient GPU scan starts to surpass the performance of our CPU scan, which increases linearly). Our naive GPU scan implementation roughly performs similarly to the CPU implementation. Meanwhile, our thrust wrapper performs relatively uniformly wrt time, regardless of how large of an array we feed into it, and starts to perform better than all of our other algorithms after extremely large array sizes, at a size of 2^24. However, it is the most inefficient with smaller sized arrays. The reason why this is the case is due to blah blah blah TODO.
+We see that for large array sizes (greater than 2^21 elements, our work-efficient GPU scan starts to surpass the performance of our CPU scan, which increases linearly). Our naive GPU scan implementation roughly performs similarly to the CPU implementation. Meanwhile, our thrust wrapper performs relatively uniformly wrt time, regardless of how large of an array we feed into it, and starts to perform better compared to all of our other algorithms after extremely large array sizes, at a size of 2^24. However, it is the most inefficient with smaller sized arrays. NSight systems provides us the following data for our executable running on an array with 2^18 elements:
+![nsight1](img/devicescankernel.png)
 
-What is causing performance bottlenecks in each computation system?
+![nsight1](img/cudaoverhead.png)
 
+The first image shows us the interval of time at which DeviceScanKernel was invoked. Looking at the second image, we see that the overhead is not due to the exclusive scan itself (in gray at the very end), but actually due to several preprocessing memory computations such as cudaFree, cudaMalloc, and thrust::two_system_copy.
 
-Release version test output, for a 2^18 sized array^:
+In terms of other performance bottlenecks, also testing with 2^18 elements in our array:
+- CPU: Number of elements in our array grows linearly with time - the bottleneck is in the algorithm presented here itself.
+- Naive GPU: Scan function is bottleneck and takes up the most time (0.297 milliseconds). The process of changing it from an inclusive to exclusive scan takes very little to no time (0.004 milliseconds). Copying over memory from host to device also take little to no time (around 0.081 milliseconds)
+- Work-efficient GPU: We see that memory computations take up  around 1/2 of the execution process (around 1 millisecond total), whereas the upsweep and downsweeping process itself takes up another millisecond.
+
+Release version test output, for a 2^18 sized array (we only measure the actual algorithm running and not any memory computations):
 ```
 
 ****************
