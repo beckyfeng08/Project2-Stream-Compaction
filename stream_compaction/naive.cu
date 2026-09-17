@@ -39,8 +39,7 @@ namespace StreamCompaction {
         void scan(int n, int *odata, const int *idata) {
 
             // setting block size
-            int blockSize = 64;
-            int fullBlocksPerGrid((n + blockSize - 1) / blockSize);
+            int fullBlocksPerGrid((n + Common::blockSize - 1) / Common::blockSize);
 
             // initialize helper buffers for swapping
             int* idata2;
@@ -58,7 +57,7 @@ namespace StreamCompaction {
 
             for (int d = 0; d < lvlcount; d++) {
                 int offset = 1 << d; // 2^d-1
-                scanHelper<<<fullBlocksPerGrid, blockSize>> > (n, offset, odata2, idata2);
+                scanHelper<<<fullBlocksPerGrid, Common::blockSize>> > (n, offset, odata2, idata2);
                 // swap buffers
                 int* tmp = idata2;
                 idata2 = odata2;
@@ -66,7 +65,7 @@ namespace StreamCompaction {
             }
             // inclusive to exclusive
 
-            inclusive2exclusive<< <fullBlocksPerGrid, blockSize >> > (n, odata2, idata2);
+            inclusive2exclusive<< <fullBlocksPerGrid, Common::blockSize >> > (n, odata2, idata2);
             timer().endGpuTimer();
 
             // at the end, populate odata
