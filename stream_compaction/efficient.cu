@@ -11,6 +11,8 @@ namespace StreamCompaction {
             static PerformanceTimer timer;
             return timer;
         }
+        int blockSize = 64;
+
 
         __global__ void upsweep(int n, int offset, int* idata) {
             int index = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -43,7 +45,7 @@ namespace StreamCompaction {
          */
         void scan(int n, int *odata, const int *idata) {
             // setting block size
-            int fullBlocksPerGrid((n + Common::blockSize - 1) / Common::blockSize);
+            int fullBlocksPerGrid((n +  blockSize - 1) /  blockSize);
 
             int* idata2;
             int n_padded = n;
@@ -64,15 +66,15 @@ namespace StreamCompaction {
             // upsweep
             for (int d = 0; d < logn; d++) {
                 int numelements = 1 << (logn - d);
-                fullBlocksPerGrid =( numelements + Common::blockSize - 1) / Common::blockSize;
-                upsweep<<<fullBlocksPerGrid, Common::blockSize>>>(n_padded, d, idata2);
+                fullBlocksPerGrid =( numelements +  blockSize - 1) /  blockSize;
+                upsweep<<<fullBlocksPerGrid,  blockSize>>>(n_padded, d, idata2);
             }
             // downsweep, geenrates exclusive scan
             cudaMemset(idata2 + n_padded - 1, 0, sizeof(int));
             for (int d = logn - 1; d >= 0; d--) {
                 int numelements = 1 << (logn - d);
-                fullBlocksPerGrid =( numelements + Common::blockSize - 1) / Common::blockSize;
-                downsweep<<<fullBlocksPerGrid, Common::blockSize>>>(n_padded, d, idata2);
+                fullBlocksPerGrid =( numelements +  blockSize - 1) /  blockSize;
+                downsweep<<<fullBlocksPerGrid,  blockSize>>>(n_padded, d, idata2);
             }
             timer().endGpuTimer();
 
@@ -94,7 +96,7 @@ namespace StreamCompaction {
 
         int compact(int n, int *odata, const int *idata) {
             //timer().startGpuTimer();
-            int fullBlocksPerGrid((n + Common::blockSize - 1) / Common::blockSize);
+            int fullBlocksPerGrid((n +  blockSize - 1) /  blockSize);
 
             // TODO
             int* booldata;
@@ -113,11 +115,11 @@ namespace StreamCompaction {
             cudaMalloc(&odata2, n * sizeof(int));
             cudaMemcpy(idata2, idata, n * sizeof(int), cudaMemcpyHostToDevice); // must be put on device i think for this to work
 
-            StreamCompaction::Common::kernMapToBoolean << <fullBlocksPerGrid, Common::blockSize >> > (n, booldata, idata2);
+            StreamCompaction::Common::kernMapToBoolean << <fullBlocksPerGrid,  blockSize >> > (n, booldata, idata2);
 
             scan(n, booldata_scanned, booldata);
 
-            StreamCompaction::Common::kernScatter <<<fullBlocksPerGrid, Common::blockSize>>>(n, odata2, idata2, booldata, booldata_scanned);
+            StreamCompaction::Common::kernScatter <<<fullBlocksPerGrid,  blockSize>>>(n, odata2, idata2, booldata, booldata_scanned);
 
             int count1;
             int count2;
