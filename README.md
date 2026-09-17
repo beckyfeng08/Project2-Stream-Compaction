@@ -23,6 +23,9 @@ Stream compaction implementations include:
 - CPU with scan: Invokes the scan function - sets up an array of 0's and 1's depending on if the elements in the input array are "valid", applies the scan function to it to receive the indices necessary for copying to the output array
 - Work-efficient: Same as previous, but on the GPU and invokes work-efficient scan function.
 
+### Block size optimization
+We find that a block size of 128 works best for our computer in terms of providing us with the least time needed, on average, to execute out the naive and work-efficient scan functions.
+
 ### Evaluating performance
 All of the following data were taken on Release mode, for array sizes of power-of-twos.
 
